@@ -1,13 +1,16 @@
 # VPS Scripts for quick server setup and quick vpn protocol installation.
 
 **Settings VPS** (Initial system setup) 
-`curl -fsSL https://raw.githubusercontent.com/Toujifushiguro/vps-scripts/main/install-vps.sh -o install-vps.sh && sudo bash install-vps.sh`
+`curl -fsSL https://raw.githubusercontent.com/Toujifushiguro/zloy_na_vps/install-vps.sh -o install-vps.sh && sudo bash install-vps.sh`
 
-**AmneziaWG**    (Installation AmneziaWG)
-`sudo curl -fsSL https://raw.githubusercontent.com/Toujifushiguro/vps-scripts/main/amneziawg-install.sh -o amneziawg-install.sh && sudo bash amneziawg-install.sh`
+**Settings VPS & VPN & Telegramm** (Auto-installer for basic VPS setup + multiple VPN protocols)
+`sudo curl -fsSL https://raw.githubusercontent.com/Toujifushiguro/zloy_na_vps/vpn-unified-manager-bundle.sh -o vpn-unified-manager-bundle.sh && sudo bash vpn-unified-manager-bundle.sh`
 
-**X-ray**        (Installation X-ray)
-`sudo curl -fsSL https://raw.githubusercontent.com/Toujifushiguro/vps-scripts/main/xray-install.sh -o xray-install.sh && sudo bash xray-install.sh`
+
+**Configurable settings** :
+- `install-vps.sh`: enter new username and SSH port.
+- `vpn-unified-manager-bundle.sh`: enter new username, SSH port, SSH key, Telegram bot token and Telegram user ID.
+
 
 **VPS** :
 - Speed 200mb, unlimit, 2.4$ per month 👉 [VPS](https://hip.hosting/?code=1f1512fae68adea35341)
@@ -23,5 +26,12 @@
             [MACOS & IOS](https://apps.apple.com/ga/app/v2box-v2ray-client/id6446814690?l=en-GB&platform=mac)
             [Windows](https://github.com/InvisibleManVPN/InvisibleMan-XRayClient)
             [Android](https://play.google.com/store/apps/details?id=dev.hexasoftware.v2box&hl=en_US&ysclid=mlng44btsk963931568)
+
+**Client App for OpenVpn** :
+            [MACOS & IOS & Windows & Android](https://openvpn.net/client/)
+
+**Client App for Outline** :
+            [MACOS & IOS & Windows & Android](https://outline-vpn.com/#download-outline)
+            
 
 **Telegramm for communication and assistance**: @zloynasestemy
