@@ -1923,8 +1923,37 @@ class AmneziaWGManager:
         )
         write_text(source_file, source_content, mode=0o644)
 
+    def _has_awg_tools(self) -> bool:
+        return run(
+            "command -v awg >/dev/null 2>&1 && "
+            "command -v awg-quick >/dev/null 2>&1 && echo yes || echo no",
+            check=False,
+        ) == "yes"
+
+    def _install_userspace_from_github(self) -> None:
+        run(
+            "DEBIAN_FRONTEND=noninteractive "
+            "apt-get -o DPkg::Lock::Timeout=120 install -y "
+            "git build-essential make gcc pkg-config golang-go resolvconf iproute2 qrencode"
+        )
+        run(
+            "set -e; "
+            "build_dir=/tmp/amneziawg-userspace-build; "
+            "rm -rf \"$build_dir\"; "
+            "mkdir -p \"$build_dir\"; "
+            "git clone --depth=1 https://github.com/amnezia-vpn/amneziawg-tools.git \"$build_dir/amneziawg-tools\"; "
+            "make -C \"$build_dir/amneziawg-tools/src\" install; "
+            "git clone --depth=1 https://github.com/amnezia-vpn/amneziawg-go.git \"$build_dir/amneziawg-go\"; "
+            "make -C \"$build_dir/amneziawg-go\"; "
+            "make -C \"$build_dir/amneziawg-go\" install"
+        )
+        if not self._has_awg_tools():
+            raise RuntimeError("Failed to install AmneziaWG userspace tools from GitHub.")
+        if run("command -v amneziawg-go >/dev/null 2>&1 && echo yes || echo no", check=False) != "yes":
+            raise RuntimeError("Failed to install amneziawg-go userspace daemon from GitHub.")
+
     def _ensure_installed(self) -> None:
-        if run("command -v awg >/dev/null 2>&1 && echo yes || echo no", check=False) == "yes":
+        if self._has_awg_tools():
             return
         if run("command -v apt-get >/dev/null 2>&1 && echo yes || echo no", check=False) != "yes":
             raise RuntimeError("AmneziaWG auto-install currently supports apt-based systems only.")
@@ -1958,8 +1987,8 @@ class AmneziaWGManager:
         )
         candidate = self._apt_candidate_amneziawg()
         if not candidate or candidate == "(none)":
-            codename = self._ubuntu_codename() or "unknown"
-            raise RuntimeError(f"AmneziaWG package candidate not found for distro codename '{codename}'.")
+            self._install_userspace_from_github()
+            return
         run(
             "DEBIAN_FRONTEND=noninteractive "
             "apt-get -o DPkg::Lock::Timeout=120 install -y amneziawg amneziawg-tools qrencode"
