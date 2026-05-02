@@ -1,10 +1,10 @@
 # VPS Scripts for quick server setup and quick vpn protocol installation.
 
 **Settings VPS** (Initial system setup) 
-`curl -fsSL https://raw.githubusercontent.com/Toujifushiguro/zloy_na_vps/install-vps.sh -o install-vps.sh && sudo bash install-vps.sh`
+`curl -fsSL https://raw.githubusercontent.com/Toujifushiguro/zloy_na_vps/main/install-vps.sh -o install-vps.sh && sudo bash install-vps.sh`
 
 **Settings VPS & VPN & Telegramm** (Auto-installer for basic VPS setup + multiple VPN protocols)
-`sudo curl -fsSL https://raw.githubusercontent.com/Toujifushiguro/zloy_na_vps/vpn-unified-manager-bundle.sh -o vpn-unified-manager-bundle.sh && sudo bash vpn-unified-manager-bundle.sh`
+`sudo curl -fsSL https://raw.githubusercontent.com/Toujifushiguro/zloy_na_vps/main/vpn-unified-manager-bundle.sh -o vpn-unified-manager-bundle.sh && sudo bash vpn-unified-manager-bundle.sh`
 
 
 **Configurable settings** :
