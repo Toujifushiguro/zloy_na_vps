@@ -500,7 +500,7 @@ PY
   rm -f "$handoff_bootstrap_json" 2>/dev/null || true
 }
 
-cat > "$TARGET/vpn_manager.py" <<'__VPN_MGR_277f6af191d71464d73df5823128d1fcb0425f140b362788__'
+cat > "$TARGET/vpn_manager.py" <<'__VPN_MGR_941af955136b113fcf8b1c6607a7051d07b0ac03eae96fba__'
 #!/usr/bin/env python3
 """
 Unified VPN manager for multiple protocols.
@@ -1661,11 +1661,11 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-__VPN_MGR_277f6af191d71464d73df5823128d1fcb0425f140b362788__
-cat > "$TARGET/vpn_protocols/__init__.py" <<'__VPN_MGR_6ce1de3011d5ac4754ba9508e936110e2c2562428bee209a__'
+__VPN_MGR_941af955136b113fcf8b1c6607a7051d07b0ac03eae96fba__
+cat > "$TARGET/vpn_protocols/__init__.py" <<'__VPN_MGR_0907868a4ec078c21ef7d02f88d65ef607fbea4f8e00fbff__'
 # Protocol implementations for unified VPN manager.
-__VPN_MGR_6ce1de3011d5ac4754ba9508e936110e2c2562428bee209a__
-cat > "$TARGET/vpn_protocols/amneziawg.py" <<'__VPN_MGR_7c44a0f70f8644f8f3b1ff948e60d15e5d5e890c0248ed68__'
+__VPN_MGR_0907868a4ec078c21ef7d02f88d65ef607fbea4f8e00fbff__
+cat > "$TARGET/vpn_protocols/amneziawg.py" <<'__VPN_MGR_82fd4eb845f800e8a869a0d22dd500079a4f8c542c6b7d38__'
 from __future__ import annotations
 
 import random
@@ -1674,6 +1674,12 @@ import textwrap
 from pathlib import Path
 
 from .shared import read_text, replace_or_append_line, run, write_text
+
+
+def _clean_config_text(content: str) -> str:
+    lines = content.splitlines()
+    cleaned = [line.lstrip(" \t").rstrip() if line.strip() else "" for line in lines]
+    return "\n".join(cleaned).strip() + "\n"
 
 
 class AmneziaWGManager:
@@ -1748,14 +1754,16 @@ class AmneziaWGManager:
         i1 = read_text(self.conf_dir / "cps_i1.txt").strip()
         if not i1:
             return ""
-        return textwrap.dedent(
-            f"""\
-            I1 = <b 0x{i1}>
-            I2 = .
-            I3 = .
-            I4 = .
-            I5 = .
-            """
+        return _clean_config_text(
+            textwrap.dedent(
+                f"""\
+                I1 = <b 0x{i1}>
+                I2 = .
+                I3 = .
+                I4 = .
+                I5 = .
+                """
+            )
         ).strip()
 
     def _server_ip(self) -> str:
@@ -2055,70 +2063,67 @@ class AmneziaWGManager:
         preshared = read_text(self.keys_dir / "presharedkey").strip()
         self.clients_dir.mkdir(parents=True, exist_ok=True)
 
-        server_conf_content = textwrap.dedent(
-            f"""\
-            [Interface]
-            PrivateKey = {server_priv}
-            Address = {self.vpn_server_ip}/24
-            ListenPort = {listen_port}
-            Jc = {jc}
-            Jmin = {jmin}
-            Jmax = {jmax}
-            S1 = {s1}
-            S2 = {s2}
-            S3 = {s3}
-            S4 = {s4}
-            H1 = {h1}
-            H2 = {h2}
-            H3 = {h3}
-            H4 = {h4}
-            PostUp = iptables -A INPUT -i {main_interface} -p udp --dport {listen_port} -j ACCEPT; iptables -A FORWARD -i awg0 -o {main_interface} -j ACCEPT; iptables -A FORWARD -i {main_interface} -o awg0 -m state --state RELATED,ESTABLISHED -j ACCEPT; iptables -t nat -A POSTROUTING -s {self.vpn_subnet} -o {main_interface} -j MASQUERADE
-            PostDown = iptables -D INPUT -i {main_interface} -p udp --dport {listen_port} -j ACCEPT; iptables -D FORWARD -i awg0 -o {main_interface} -j ACCEPT; iptables -D FORWARD -i {main_interface} -o awg0 -m state --state RELATED,ESTABLISHED -j ACCEPT; iptables -t nat -D POSTROUTING -s {self.vpn_subnet} -o {main_interface} -j MASQUERADE
+        server_conf_content = _clean_config_text(
+            textwrap.dedent(
+                f"""\
+                [Interface]
+                PrivateKey = {server_priv}
+                Address = {self.vpn_server_ip}/24
+                ListenPort = {listen_port}
+                Jc = {jc}
+                Jmin = {jmin}
+                Jmax = {jmax}
+                S1 = {s1}
+                S2 = {s2}
+                S3 = {s3}
+                S4 = {s4}
+                H1 = {h1}
+                H2 = {h2}
+                H3 = {h3}
+                H4 = {h4}
+                PostUp = iptables -A INPUT -i {main_interface} -p udp --dport {listen_port} -j ACCEPT; iptables -A FORWARD -i awg0 -o {main_interface} -j ACCEPT; iptables -A FORWARD -i {main_interface} -o awg0 -m state --state RELATED,ESTABLISHED -j ACCEPT; iptables -t nat -A POSTROUTING -s {self.vpn_subnet} -o {main_interface} -j MASQUERADE
+                PostDown = iptables -D INPUT -i {main_interface} -p udp --dport {listen_port} -j ACCEPT; iptables -D FORWARD -i awg0 -o {main_interface} -j ACCEPT; iptables -D FORWARD -i {main_interface} -o awg0 -m state --state RELATED,ESTABLISHED -j ACCEPT; iptables -t nat -D POSTROUTING -s {self.vpn_subnet} -o {main_interface} -j MASQUERADE
 
-            [Peer]
-            PresharedKey = {preshared}
-            PublicKey = {client_pub}
-            AllowedIPs = {self.subnet_prefix}.2/32
-            """
+                [Peer]
+                PresharedKey = {preshared}
+                PublicKey = {client_pub}
+                AllowedIPs = {self.subnet_prefix}.2/32
+                """
+            )
         )
         write_text(self.server_conf, server_conf_content, mode=0o600)
 
         cps_block = ""
         if i1_hex:
-            cps_block = textwrap.dedent(
+            cps_block = self._cps_lines()
+
+        initial_client_conf = _clean_config_text(
+            textwrap.dedent(
                 f"""\
-                I1 = <b 0x{i1_hex}>
-                I2 = .
-                I3 = .
-                I4 = .
-                I5 = .
+                [Interface]
+                PrivateKey = {client_priv}
+                Address = {self.subnet_prefix}.2/24
+                DNS = 8.8.8.8, 8.8.4.4
+                Jc = {jc}
+                Jmin = {jmin}
+                Jmax = {jmax}
+                S1 = {s1}
+                S2 = {s2}
+                S3 = {s3}
+                S4 = {s4}
+                H1 = {h1}
+                H2 = {h2}
+                H3 = {h3}
+                H4 = {h4}
+                {cps_block}
+                [Peer]
+                PresharedKey = {preshared}
+                PublicKey = {server_pub}
+                Endpoint = {server_ip}:{listen_port}
+                AllowedIPs = 0.0.0.0/0
+                PersistentKeepalive = 25
                 """
             )
-
-        initial_client_conf = textwrap.dedent(
-            f"""\
-            [Interface]
-            PrivateKey = {client_priv}
-            Address = {self.subnet_prefix}.2/24
-            DNS = 8.8.8.8, 8.8.4.4
-            Jc = {jc}
-            Jmin = {jmin}
-            Jmax = {jmax}
-            S1 = {s1}
-            S2 = {s2}
-            S3 = {s3}
-            S4 = {s4}
-            H1 = {h1}
-            H2 = {h2}
-            H3 = {h3}
-            H4 = {h4}
-            {cps_block}[Peer]
-            PresharedKey = {preshared}
-            PublicKey = {server_pub}
-            Endpoint = {server_ip}:{listen_port}
-            AllowedIPs = 0.0.0.0/0
-            PersistentKeepalive = 25
-            """
         )
         write_text(self.clients_dir / "awg0-client-initial.conf", initial_client_conf, mode=0o600)
 
@@ -2177,44 +2182,49 @@ class AmneziaWGManager:
         client_pub = run(f"echo '{client_priv}' | awg pubkey")
         psk = run("awg genpsk")
         cps = self._cps_lines()
-        cps_block = f"{cps}\n" if cps else ""
+        cps_block = cps if cps else ""
 
-        conf = textwrap.dedent(
-            f"""\
-            [Interface]
-            PrivateKey = {client_priv}
-            Address = {client_ip}/24
-            DNS = 8.8.8.8, 8.8.4.4
-            Jc = {params['Jc']}
-            Jmin = {params['Jmin']}
-            Jmax = {params['Jmax']}
-            S1 = {params['S1']}
-            S2 = {params['S2']}
-            S3 = {params['S3']}
-            S4 = {params['S4']}
-            H1 = {params['H1']}
-            H2 = {params['H2']}
-            H3 = {params['H3']}
-            H4 = {params['H4']}
-            {cps_block}[Peer]
-            PresharedKey = {psk}
-            PublicKey = {server_public_key}
-            Endpoint = {server_ip}:{params['ListenPort']}
-            AllowedIPs = 0.0.0.0/0
-            PersistentKeepalive = 25
-            """
+        conf = _clean_config_text(
+            textwrap.dedent(
+                f"""\
+                [Interface]
+                PrivateKey = {client_priv}
+                Address = {client_ip}/24
+                DNS = 8.8.8.8, 8.8.4.4
+                Jc = {params['Jc']}
+                Jmin = {params['Jmin']}
+                Jmax = {params['Jmax']}
+                S1 = {params['S1']}
+                S2 = {params['S2']}
+                S3 = {params['S3']}
+                S4 = {params['S4']}
+                H1 = {params['H1']}
+                H2 = {params['H2']}
+                H3 = {params['H3']}
+                H4 = {params['H4']}
+                {cps_block}
+                [Peer]
+                PresharedKey = {psk}
+                PublicKey = {server_public_key}
+                Endpoint = {server_ip}:{params['ListenPort']}
+                AllowedIPs = 0.0.0.0/0
+                PersistentKeepalive = 25
+                """
+            )
         )
         write_text(path, conf, mode=0o600)
 
-        peer_block = textwrap.dedent(
-            f"""\
+        peer_block = _clean_config_text(
+            textwrap.dedent(
+                f"""\
 
-            # client: {name}
-            [Peer]
-            PresharedKey = {psk}
-            PublicKey = {client_pub}
-            AllowedIPs = {client_ip}/32
-            """
+                # client: {name}
+                [Peer]
+                PresharedKey = {psk}
+                PublicKey = {client_pub}
+                AllowedIPs = {client_ip}/32
+                """
+            )
         )
         current_server = read_text(self.server_conf)
         write_text(self.server_conf, current_server.rstrip() + "\n" + peer_block, mode=0o600)
@@ -2331,8 +2341,8 @@ class AmneziaWGManager:
         if not path.exists():
             raise RuntimeError(f"Client config not found: {path}")
         return {"client": name, "path": str(path)}
-__VPN_MGR_7c44a0f70f8644f8f3b1ff948e60d15e5d5e890c0248ed68__
-cat > "$TARGET/vpn_protocols/openvpn.py" <<'__VPN_MGR_d0658e66c06df652231ec7cbb63f97f52ebe2c5c7f4b7da9__'
+__VPN_MGR_82fd4eb845f800e8a869a0d22dd500079a4f8c542c6b7d38__
+cat > "$TARGET/vpn_protocols/openvpn.py" <<'__VPN_MGR_1a97652bd9cb5e5ffa0016e2a7c8839c06012614850b3593__'
 from __future__ import annotations
 
 import re
@@ -2969,8 +2979,8 @@ class OpenVPNManager:
         if not path.exists():
             path = self._build_ovpn(name)
         return {"client": name, "path": str(path)}
-__VPN_MGR_d0658e66c06df652231ec7cbb63f97f52ebe2c5c7f4b7da9__
-cat > "$TARGET/vpn_protocols/outline.py" <<'__VPN_MGR_81af53cec2df2b41ca01d3f781dc31c46e98b31a368f2ae7__'
+__VPN_MGR_1a97652bd9cb5e5ffa0016e2a7c8839c06012614850b3593__
+cat > "$TARGET/vpn_protocols/outline.py" <<'__VPN_MGR_e7c1616c8b260311ac4f8f8f0c37ee86948356045de07900__'
 from __future__ import annotations
 
 import base64
@@ -3259,8 +3269,8 @@ class OutlineManager:
             self.clients_dir.mkdir(parents=True, exist_ok=True)
             write_text(path, uri + "\n", mode=0o600)
         return {"client": safe, "path": str(path)}
-__VPN_MGR_81af53cec2df2b41ca01d3f781dc31c46e98b31a368f2ae7__
-cat > "$TARGET/vpn_protocols/xray_reality.py" <<'__VPN_MGR_74e64cd292c734088097364aeae321def3f9d0d047819b63__'
+__VPN_MGR_e7c1616c8b260311ac4f8f8f0c37ee86948356045de07900__
+cat > "$TARGET/vpn_protocols/xray_reality.py" <<'__VPN_MGR_d90007d44082f0863ea0748140b378b42a3f55d1530dd26b__'
 from __future__ import annotations
 
 import json
@@ -3647,8 +3657,8 @@ class XrayRealityManager:
         uri = self._build_uri(safe, client_id, inbound)
         out = self._write_client_uri(safe, uri)
         return {"client": safe, "path": str(out)}
-__VPN_MGR_74e64cd292c734088097364aeae321def3f9d0d047819b63__
-cat > "$TARGET/vpn_protocols/shared.py" <<'__VPN_MGR_1c8d8217f0e9c9888c80ee23947a89057ce4f4d99b2d0705__'
+__VPN_MGR_d90007d44082f0863ea0748140b378b42a3f55d1530dd26b__
+cat > "$TARGET/vpn_protocols/shared.py" <<'__VPN_MGR_b9f7404d9c56da7506d0f15b983f1ffd94c0e6dd026605dd__'
 from __future__ import annotations
 
 import os
@@ -3696,8 +3706,8 @@ def replace_or_append_line(content: str, key: str, value: str) -> str:
         return re.sub(pattern, replacement, content, flags=re.MULTILINE)
     base = content.rstrip()
     return f"{base}\n{replacement}\n" if base else f"{replacement}\n"
-__VPN_MGR_1c8d8217f0e9c9888c80ee23947a89057ce4f4d99b2d0705__
-cat > "$TARGET/vpn_protocols/telegram_bot.py" <<'__VPN_MGR_f0d27f3712f1635cc684cb8f9bb2a76d87f6747a33208a99__'
+__VPN_MGR_b9f7404d9c56da7506d0f15b983f1ffd94c0e6dd026605dd__
+cat > "$TARGET/vpn_protocols/telegram_bot.py" <<'__VPN_MGR_6bac71420a77532e71fe3f13b322546d8d081219af5b4d3c__'
 from __future__ import annotations
 
 import json
@@ -3726,6 +3736,8 @@ from .shared import require_root, sanitize_client_name, write_text
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "telegram_bot.json"
 SERVERS_PATH = Path(__file__).resolve().parent.parent / "servers.json"
 SERVER_SETUP_LOG_PATH = Path(__file__).resolve().parent.parent / "server_setup.log"
+
+ServerDraft = dict[str, str]
 
 
 def _load_config(config_path: Path) -> dict[str, str]:
@@ -3773,7 +3785,7 @@ class TelegramBotManager:
     def __init__(self, repo_root: Path, config_path: Path = CONFIG_PATH):
         self.repo_root = repo_root
         self.config_path = config_path
-        self._pending: dict[str, dict[str, str]] = {}
+        self._pending: dict[str, dict[str, object]] = {}
         self._last_menu_message: dict[str, int] = {}
 
     def _servers_path(self) -> Path:
@@ -3942,19 +3954,104 @@ class TelegramBotManager:
         data["servers"] = servers
         _save_servers(self._servers_path(), data)
 
-    def _run_local_command(self, cmd: list[str], timeout_seconds: int) -> tuple[bool, str]:
+    def _pending_server_batch(self, pending: dict[str, object] | None) -> list[ServerDraft]:
+        if not pending:
+            return []
+        raw_servers = pending.get("servers")
+        if not isinstance(raw_servers, list):
+            return []
+        servers: list[ServerDraft] = []
+        for item in raw_servers:
+            if not isinstance(item, dict):
+                continue
+            server: ServerDraft = {
+                "name": str(item.get("name", "")).strip(),
+                "country": str(item.get("country", "")).strip(),
+                "host": str(item.get("host", "")).strip(),
+                "password": str(item.get("password", "")).strip(),
+            }
+            if server["name"] and server["country"] and server["host"] and server["password"]:
+                servers.append(server)
+        return servers
+
+    def _server_batch_summary(self, servers: list[ServerDraft]) -> str:
+        if not servers:
+            return "No servers queued."
+        lines = []
+        for index, server in enumerate(servers, start=1):
+            lines.append(f"{index}. {server['name']} ({server['country']}) {server['host']} user=root")
+        return "\n".join(lines)
+
+    def _start_add_server_wizard(self, chat_id: str, servers: list[ServerDraft] | None = None) -> None:
+        self._pending[chat_id] = {"mode": "add-server-name", "servers": servers or []}
+
+    def _send_server_batch_prompt(self, token: str, chat_id: str, servers: list[ServerDraft]) -> None:
+        keyboard = [
+            [
+                {"text": "Add another", "callback_data": "add-server-more"},
+                {"text": "Start setup", "callback_data": "add-server-start"},
+            ],
+            [{"text": "Cancel", "callback_data": "add-server-cancel"}],
+        ]
+        self._send_message(
+            token,
+            chat_id,
+            f"Queued servers:\n{self._server_batch_summary(servers)}\n\nAdd another server or start setup?",
+            keyboard=keyboard,
+            cleanup=True,
+        )
+
+    def _setup_server_batch(self, token: str, chat_id: str, servers: list[ServerDraft]) -> None:
+        servers_path = self._servers_path()
+        completed = 0
+        failed = 0
+        for server in servers:
+            server_name = server["name"]
+            country = server["country"]
+            host = server["host"]
+            password = server["password"]
+            inventory_snapshot = _load_servers(servers_path)
+            try:
+                self._upsert_inventory_server(server_name, country, host, password)
+                self._send_message(token, chat_id, f"✅ Server saved: {server_name} ({country}) {host} user=root")
+                self._send_message(token, chat_id, f"Starting auto-setup for {server_name} ...")
+                safe_name = sanitize_client_name(server_name)
+                ok, setup_log = self._setup_server_now(safe_name)
+                self._append_server_setup_log(server_name, setup_log)
+                if setup_log:
+                    self._send_code_message(token, chat_id, "\n".join(setup_log))
+                if ok:
+                    completed += 1
+                    self._send_message(token, chat_id, f"✅ Setup completed: {server_name}")
+                else:
+                    failed += 1
+                    _save_servers(servers_path, inventory_snapshot)
+                    self._send_message(token, chat_id, f"❌ Setup failed: {server_name}")
+                    self._send_message(token, chat_id, "Inventory changes were rolled back for this server.")
+            except Exception as exc:  # noqa: BLE001
+                failed += 1
+                _save_servers(servers_path, inventory_snapshot)
+                self._send_message(token, chat_id, f"❌ Error on {server_name}: {exc}")
+        self._send_message(token, chat_id, f"Batch setup finished. Completed: {completed}. Failed: {failed}.")
+
+    def _run_local_command(
+        self,
+        cmd: list[str],
+        timeout_seconds: int,
+        max_output_chars: int | None = 400,
+    ) -> tuple[bool, str]:
         try:
             proc = subprocess.run(cmd, text=True, capture_output=True, timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
             return False, f"timeout after {timeout_seconds}s"
         if proc.returncode != 0:
             details = (proc.stderr or proc.stdout or f"exit code {proc.returncode}").strip()
-            if len(details) > 400:
-                details = details[:400] + "..."
+            if max_output_chars is not None and len(details) > max_output_chars:
+                details = details[:max_output_chars] + "..."
             return False, details
         out = proc.stdout.strip() or "ok"
-        if len(out) > 400:
-            out = out[:400] + "..."
+        if max_output_chars is not None and len(out) > max_output_chars:
+            out = out[:max_output_chars] + "..."
         return True, out
 
     def _cleanup_known_host_entries(self, host: str, port: int) -> tuple[bool, str]:
@@ -3986,8 +4083,19 @@ class TelegramBotManager:
             return True, "; ".join(messages) or "known_hosts cleaned"
         return False, "; ".join(messages) or "no matching known_hosts entries"
 
-    def _run_remote_with_hostkey_retry(self, cmd: list[str], timeout_seconds: int, host: str, port: int) -> tuple[bool, str]:
-        ok, details = self._run_local_command(cmd, timeout_seconds=timeout_seconds)
+    def _run_remote_with_hostkey_retry(
+        self,
+        cmd: list[str],
+        timeout_seconds: int,
+        host: str,
+        port: int,
+        max_output_chars: int | None = 400,
+    ) -> tuple[bool, str]:
+        ok, details = self._run_local_command(
+            cmd,
+            timeout_seconds=timeout_seconds,
+            max_output_chars=max_output_chars,
+        )
         if ok:
             return True, details
         lowered = details.lower()
@@ -4001,7 +4109,11 @@ class TelegramBotManager:
         cleaned, clean_details = self._cleanup_known_host_entries(host, port)
         if not cleaned:
             return False, f"{details}; known_hosts cleanup failed: {clean_details}"
-        ok2, details2 = self._run_local_command(cmd, timeout_seconds=timeout_seconds)
+        ok2, details2 = self._run_local_command(
+            cmd,
+            timeout_seconds=timeout_seconds,
+            max_output_chars=max_output_chars,
+        )
         if ok2:
             return True, f"{details2} (retried after known_hosts cleanup)"
         return False, f"{details2} (retried after known_hosts cleanup: {clean_details})"
@@ -4858,7 +4970,13 @@ class TelegramBotManager:
         if transport_error:
             return False, transport_error
         sudo_cmd = [*ssh_prefix, f"sudo -n cat {shlex.quote(config_path)}"]
-        ok, output = self._run_remote_with_hostkey_retry(sudo_cmd, timeout_seconds=120, host=host, port=port)
+        ok, output = self._run_remote_with_hostkey_retry(
+            sudo_cmd,
+            timeout_seconds=120,
+            host=host,
+            port=port,
+            max_output_chars=None,
+        )
         if ok:
             return True, output
         lowered = output.lower()
@@ -4876,6 +4994,7 @@ class TelegramBotManager:
             timeout_seconds=120,
             host=host,
             port=port,
+            max_output_chars=None,
         )
         if ok_plain:
             return True, output_plain
@@ -4996,6 +5115,7 @@ class TelegramBotManager:
                     chat_id,
                     tmp_path,
                     caption=f"client: {client_label}",
+                    strip_indent=True,
                     filename_override=f"{client_label}.{ext}",
                 )
             finally:
@@ -5266,17 +5386,26 @@ class TelegramBotManager:
             self._send_settings_menu(token, chat_id, section="users")
             return
         if pending and pending.get("mode") == "add-server-name":
+            servers = self._pending_server_batch(pending)
             try:
                 safe_name = sanitize_client_name(text)
             except Exception as exc:  # noqa: BLE001
                 self._send_message(token, chat_id, f"Invalid server name: {exc}")
                 self._send_message(token, chat_id, "Enter server name (slug):")
                 return
-            self._pending[chat_id] = {"mode": "add-server-country", "server_name": safe_name}
+            if any(server["name"].lower() == safe_name.lower() for server in servers):
+                self._send_message(token, chat_id, "This server is already queued. Enter another server name:")
+                return
+            self._pending[chat_id] = {
+                "mode": "add-server-country",
+                "server_name": safe_name,
+                "servers": servers,
+            }
             self._send_message(token, chat_id, "Enter country (for example DE/US/NL):")
             return
         if pending and pending.get("mode") == "add-server-country":
-            server_name = pending.get("server_name", "").strip()
+            server_name = str(pending.get("server_name", "")).strip()
+            servers = self._pending_server_batch(pending)
             country = text.strip()
             if not server_name:
                 self._pending.pop(chat_id, None)
@@ -5286,12 +5415,18 @@ class TelegramBotManager:
             if not country:
                 self._send_message(token, chat_id, "Country cannot be empty. Enter it again:")
                 return
-            self._pending[chat_id] = {"mode": "add-server-ip", "server_name": server_name, "country": country}
+            self._pending[chat_id] = {
+                "mode": "add-server-ip",
+                "server_name": server_name,
+                "country": country,
+                "servers": servers,
+            }
             self._send_message(token, chat_id, "Enter server IP:")
             return
         if pending and pending.get("mode") == "add-server-ip":
-            server_name = pending.get("server_name", "").strip()
-            country = pending.get("country", "").strip()
+            server_name = str(pending.get("server_name", "")).strip()
+            country = str(pending.get("country", "")).strip()
+            servers = self._pending_server_batch(pending)
             host = text.strip()
             if not server_name or not country:
                 self._pending.pop(chat_id, None)
@@ -5308,48 +5443,35 @@ class TelegramBotManager:
                 "server_name": server_name,
                 "country": country,
                 "host": host,
+                "servers": servers,
             }
             self._send_message(token, chat_id, "Enter root password:")
             return
         if pending and pending.get("mode") == "add-server-password":
-            server_name = pending.get("server_name", "").strip()
-            country = pending.get("country", "").strip()
-            host = pending.get("host", "").strip()
+            server_name = str(pending.get("server_name", "")).strip()
+            country = str(pending.get("country", "")).strip()
+            host = str(pending.get("host", "")).strip()
+            servers = self._pending_server_batch(pending)
             password = text.strip()
-            self._pending.pop(chat_id, None)
             if not server_name or not country or not host:
+                self._pending.pop(chat_id, None)
                 self._send_message(token, chat_id, "❌ Error: internal wizard state lost. Start again.")
                 self._send_settings_menu(token, chat_id, section="servers")
                 return
             if not password:
                 self._send_message(token, chat_id, "❌ Error: password is empty.")
-                self._send_settings_menu(token, chat_id, section="servers")
+                self._send_message(token, chat_id, "Enter root password:")
                 return
-            servers_path = self._servers_path()
-            inventory_snapshot = _load_servers(servers_path)
-            try:
-                self._upsert_inventory_server(server_name, country, host, password)
-                self._send_message(token, chat_id, f"✅ Server saved: {server_name} ({country}) {host} user=root")
-                self._send_message(token, chat_id, f"Starting auto-setup for {server_name} ...")
-                safe_name = sanitize_client_name(server_name)
-                ok, setup_log = self._setup_server_now(safe_name)
-                self._append_server_setup_log(server_name, setup_log)
-                if setup_log:
-                    self._send_code_message(token, chat_id, "\n".join(setup_log))
-                if ok:
-                    self._send_message(token, chat_id, f"✅ Setup completed: {server_name}")
-                else:
-                    _save_servers(servers_path, inventory_snapshot)
-                    self._send_message(token, chat_id, f"❌ Setup failed: {server_name}")
-                    self._send_message(token, chat_id, "Inventory changes were rolled back: server was not added.")
-            except Exception as exc:  # noqa: BLE001
-                _save_servers(servers_path, inventory_snapshot)
-                self._send_message(token, chat_id, f"❌ Error: {exc}")
-            self._send_settings_menu(token, chat_id, section="servers")
+            servers.append({"name": server_name, "country": country, "host": host, "password": password})
+            self._pending[chat_id] = {"mode": "add-server-choice", "servers": servers}
+            self._send_server_batch_prompt(token, chat_id, servers)
+            return
+        if pending and pending.get("mode") == "add-server-choice":
+            self._send_message(token, chat_id, "Use the buttons: Add another or Start setup.")
             return
         if pending and pending.get("mode") == "create":
-            protocol = pending["protocol"]
-            proto_choice = pending.get("proto")
+            protocol = str(pending.get("protocol", "")).strip()
+            proto_choice = str(pending.get("proto", "")).strip() or None
             if protocol == "openvpn" and proto_choice not in {"udp", "tcp"}:
                 proto_choice = self._get_openvpn_client_proto()
             try:
@@ -5377,7 +5499,7 @@ class TelegramBotManager:
             self._send_client_actions(token, chat_id, protocol)
             return
         if pending and pending.get("mode") == "delete-name":
-            protocol = pending["protocol"]
+            protocol = str(pending.get("protocol", "")).strip()
             self._pending.pop(chat_id, None)
             try:
                 manager = self._manager_from_args([protocol], require_name=False)
@@ -5428,9 +5550,44 @@ class TelegramBotManager:
             self._answer_callback(token, cb_id, "Waiting")
             return
         if data == "add-server":
-            self._pending[chat_id] = {"mode": "add-server-name"}
+            self._start_add_server_wizard(chat_id)
             self._send_message(token, chat_id, "Enter server name (slug):")
             self._answer_callback(token, cb_id, "Waiting")
+            return
+        if data == "add-server-more":
+            pending = self._pending.get(chat_id)
+            if not pending or pending.get("mode") != "add-server-choice":
+                self._answer_callback(token, cb_id, "Expired")
+                self._send_message(token, chat_id, "Server add session expired. Run Add server again.")
+                return
+            servers = self._pending_server_batch(pending)
+            self._start_add_server_wizard(chat_id, servers)
+            self._send_message(token, chat_id, "Enter server name (slug):")
+            self._answer_callback(token, cb_id, "Waiting")
+            return
+        if data == "add-server-start":
+            pending = self._pending.get(chat_id)
+            if not pending or pending.get("mode") != "add-server-choice":
+                self._answer_callback(token, cb_id, "Expired")
+                self._send_message(token, chat_id, "Server add session expired. Run Add server again.")
+                return
+            servers = self._pending_server_batch(pending)
+            self._pending.pop(chat_id, None)
+            if not servers:
+                self._send_settings_menu(token, chat_id, section="servers", notice="❌ No servers queued.")
+                self._answer_callback(token, cb_id, "Empty")
+                return
+            self._answer_callback(token, cb_id, "Started")
+            self._send_message(token, chat_id, f"Starting setup for {len(servers)} server(s) ...")
+            self._setup_server_batch(token, chat_id, servers)
+            self._send_settings_menu(token, chat_id, section="servers")
+            return
+        if data == "add-server-cancel":
+            pending = self._pending.get(chat_id)
+            if pending and str(pending.get("mode", "")).startswith("add-server"):
+                self._pending.pop(chat_id, None)
+            self._send_settings_menu(token, chat_id, section="servers", notice="Server add cancelled.")
+            self._answer_callback(token, cb_id, "Cancelled")
             return
         if data == "list-servers":
             summary = self._inventory_summary()
@@ -6343,7 +6500,7 @@ class TelegramBotManager:
             keyboard=keyboard,
             cleanup=True,
         )
-__VPN_MGR_f0d27f3712f1635cc684cb8f9bb2a76d87f6747a33208a99__
+__VPN_MGR_6bac71420a77532e71fe3f13b322546d8d081219af5b4d3c__
 install_bundle_copy() {
   script_path="$0"
   case "$script_path" in

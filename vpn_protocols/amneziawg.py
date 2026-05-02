@@ -8,6 +8,12 @@ from pathlib import Path
 from .shared import read_text, replace_or_append_line, run, write_text
 
 
+def _clean_config_text(content: str) -> str:
+    lines = content.splitlines()
+    cleaned = [line.lstrip(" \t").rstrip() if line.strip() else "" for line in lines]
+    return "\n".join(cleaned).strip() + "\n"
+
+
 class AmneziaWGManager:
     def __init__(self, repo_root: Path):
         self.repo_root = repo_root
@@ -80,14 +86,16 @@ class AmneziaWGManager:
         i1 = read_text(self.conf_dir / "cps_i1.txt").strip()
         if not i1:
             return ""
-        return textwrap.dedent(
-            f"""\
-            I1 = <b 0x{i1}>
-            I2 = .
-            I3 = .
-            I4 = .
-            I5 = .
-            """
+        return _clean_config_text(
+            textwrap.dedent(
+                f"""\
+                I1 = <b 0x{i1}>
+                I2 = .
+                I3 = .
+                I4 = .
+                I5 = .
+                """
+            )
         ).strip()
 
     def _server_ip(self) -> str:
@@ -387,70 +395,67 @@ class AmneziaWGManager:
         preshared = read_text(self.keys_dir / "presharedkey").strip()
         self.clients_dir.mkdir(parents=True, exist_ok=True)
 
-        server_conf_content = textwrap.dedent(
-            f"""\
-            [Interface]
-            PrivateKey = {server_priv}
-            Address = {self.vpn_server_ip}/24
-            ListenPort = {listen_port}
-            Jc = {jc}
-            Jmin = {jmin}
-            Jmax = {jmax}
-            S1 = {s1}
-            S2 = {s2}
-            S3 = {s3}
-            S4 = {s4}
-            H1 = {h1}
-            H2 = {h2}
-            H3 = {h3}
-            H4 = {h4}
-            PostUp = iptables -A INPUT -i {main_interface} -p udp --dport {listen_port} -j ACCEPT; iptables -A FORWARD -i awg0 -o {main_interface} -j ACCEPT; iptables -A FORWARD -i {main_interface} -o awg0 -m state --state RELATED,ESTABLISHED -j ACCEPT; iptables -t nat -A POSTROUTING -s {self.vpn_subnet} -o {main_interface} -j MASQUERADE
-            PostDown = iptables -D INPUT -i {main_interface} -p udp --dport {listen_port} -j ACCEPT; iptables -D FORWARD -i awg0 -o {main_interface} -j ACCEPT; iptables -D FORWARD -i {main_interface} -o awg0 -m state --state RELATED,ESTABLISHED -j ACCEPT; iptables -t nat -D POSTROUTING -s {self.vpn_subnet} -o {main_interface} -j MASQUERADE
+        server_conf_content = _clean_config_text(
+            textwrap.dedent(
+                f"""\
+                [Interface]
+                PrivateKey = {server_priv}
+                Address = {self.vpn_server_ip}/24
+                ListenPort = {listen_port}
+                Jc = {jc}
+                Jmin = {jmin}
+                Jmax = {jmax}
+                S1 = {s1}
+                S2 = {s2}
+                S3 = {s3}
+                S4 = {s4}
+                H1 = {h1}
+                H2 = {h2}
+                H3 = {h3}
+                H4 = {h4}
+                PostUp = iptables -A INPUT -i {main_interface} -p udp --dport {listen_port} -j ACCEPT; iptables -A FORWARD -i awg0 -o {main_interface} -j ACCEPT; iptables -A FORWARD -i {main_interface} -o awg0 -m state --state RELATED,ESTABLISHED -j ACCEPT; iptables -t nat -A POSTROUTING -s {self.vpn_subnet} -o {main_interface} -j MASQUERADE
+                PostDown = iptables -D INPUT -i {main_interface} -p udp --dport {listen_port} -j ACCEPT; iptables -D FORWARD -i awg0 -o {main_interface} -j ACCEPT; iptables -D FORWARD -i {main_interface} -o awg0 -m state --state RELATED,ESTABLISHED -j ACCEPT; iptables -t nat -D POSTROUTING -s {self.vpn_subnet} -o {main_interface} -j MASQUERADE
 
-            [Peer]
-            PresharedKey = {preshared}
-            PublicKey = {client_pub}
-            AllowedIPs = {self.subnet_prefix}.2/32
-            """
+                [Peer]
+                PresharedKey = {preshared}
+                PublicKey = {client_pub}
+                AllowedIPs = {self.subnet_prefix}.2/32
+                """
+            )
         )
         write_text(self.server_conf, server_conf_content, mode=0o600)
 
         cps_block = ""
         if i1_hex:
-            cps_block = textwrap.dedent(
+            cps_block = self._cps_lines()
+
+        initial_client_conf = _clean_config_text(
+            textwrap.dedent(
                 f"""\
-                I1 = <b 0x{i1_hex}>
-                I2 = .
-                I3 = .
-                I4 = .
-                I5 = .
+                [Interface]
+                PrivateKey = {client_priv}
+                Address = {self.subnet_prefix}.2/24
+                DNS = 8.8.8.8, 8.8.4.4
+                Jc = {jc}
+                Jmin = {jmin}
+                Jmax = {jmax}
+                S1 = {s1}
+                S2 = {s2}
+                S3 = {s3}
+                S4 = {s4}
+                H1 = {h1}
+                H2 = {h2}
+                H3 = {h3}
+                H4 = {h4}
+                {cps_block}
+                [Peer]
+                PresharedKey = {preshared}
+                PublicKey = {server_pub}
+                Endpoint = {server_ip}:{listen_port}
+                AllowedIPs = 0.0.0.0/0
+                PersistentKeepalive = 25
                 """
             )
-
-        initial_client_conf = textwrap.dedent(
-            f"""\
-            [Interface]
-            PrivateKey = {client_priv}
-            Address = {self.subnet_prefix}.2/24
-            DNS = 8.8.8.8, 8.8.4.4
-            Jc = {jc}
-            Jmin = {jmin}
-            Jmax = {jmax}
-            S1 = {s1}
-            S2 = {s2}
-            S3 = {s3}
-            S4 = {s4}
-            H1 = {h1}
-            H2 = {h2}
-            H3 = {h3}
-            H4 = {h4}
-            {cps_block}[Peer]
-            PresharedKey = {preshared}
-            PublicKey = {server_pub}
-            Endpoint = {server_ip}:{listen_port}
-            AllowedIPs = 0.0.0.0/0
-            PersistentKeepalive = 25
-            """
         )
         write_text(self.clients_dir / "awg0-client-initial.conf", initial_client_conf, mode=0o600)
 
@@ -509,44 +514,49 @@ class AmneziaWGManager:
         client_pub = run(f"echo '{client_priv}' | awg pubkey")
         psk = run("awg genpsk")
         cps = self._cps_lines()
-        cps_block = f"{cps}\n" if cps else ""
+        cps_block = cps if cps else ""
 
-        conf = textwrap.dedent(
-            f"""\
-            [Interface]
-            PrivateKey = {client_priv}
-            Address = {client_ip}/24
-            DNS = 8.8.8.8, 8.8.4.4
-            Jc = {params['Jc']}
-            Jmin = {params['Jmin']}
-            Jmax = {params['Jmax']}
-            S1 = {params['S1']}
-            S2 = {params['S2']}
-            S3 = {params['S3']}
-            S4 = {params['S4']}
-            H1 = {params['H1']}
-            H2 = {params['H2']}
-            H3 = {params['H3']}
-            H4 = {params['H4']}
-            {cps_block}[Peer]
-            PresharedKey = {psk}
-            PublicKey = {server_public_key}
-            Endpoint = {server_ip}:{params['ListenPort']}
-            AllowedIPs = 0.0.0.0/0
-            PersistentKeepalive = 25
-            """
+        conf = _clean_config_text(
+            textwrap.dedent(
+                f"""\
+                [Interface]
+                PrivateKey = {client_priv}
+                Address = {client_ip}/24
+                DNS = 8.8.8.8, 8.8.4.4
+                Jc = {params['Jc']}
+                Jmin = {params['Jmin']}
+                Jmax = {params['Jmax']}
+                S1 = {params['S1']}
+                S2 = {params['S2']}
+                S3 = {params['S3']}
+                S4 = {params['S4']}
+                H1 = {params['H1']}
+                H2 = {params['H2']}
+                H3 = {params['H3']}
+                H4 = {params['H4']}
+                {cps_block}
+                [Peer]
+                PresharedKey = {psk}
+                PublicKey = {server_public_key}
+                Endpoint = {server_ip}:{params['ListenPort']}
+                AllowedIPs = 0.0.0.0/0
+                PersistentKeepalive = 25
+                """
+            )
         )
         write_text(path, conf, mode=0o600)
 
-        peer_block = textwrap.dedent(
-            f"""\
+        peer_block = _clean_config_text(
+            textwrap.dedent(
+                f"""\
 
-            # client: {name}
-            [Peer]
-            PresharedKey = {psk}
-            PublicKey = {client_pub}
-            AllowedIPs = {client_ip}/32
-            """
+                # client: {name}
+                [Peer]
+                PresharedKey = {psk}
+                PublicKey = {client_pub}
+                AllowedIPs = {client_ip}/32
+                """
+            )
         )
         current_server = read_text(self.server_conf)
         write_text(self.server_conf, current_server.rstrip() + "\n" + peer_block, mode=0o600)

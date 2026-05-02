@@ -27,6 +27,8 @@ CONFIG_PATH = Path(__file__).resolve().parent.parent / "telegram_bot.json"
 SERVERS_PATH = Path(__file__).resolve().parent.parent / "servers.json"
 SERVER_SETUP_LOG_PATH = Path(__file__).resolve().parent.parent / "server_setup.log"
 
+ServerDraft = dict[str, str]
+
 
 def _load_config(config_path: Path) -> dict[str, str]:
     if not config_path.exists():
@@ -73,7 +75,7 @@ class TelegramBotManager:
     def __init__(self, repo_root: Path, config_path: Path = CONFIG_PATH):
         self.repo_root = repo_root
         self.config_path = config_path
-        self._pending: dict[str, dict[str, str]] = {}
+        self._pending: dict[str, dict[str, object]] = {}
         self._last_menu_message: dict[str, int] = {}
 
     def _servers_path(self) -> Path:
@@ -242,19 +244,104 @@ class TelegramBotManager:
         data["servers"] = servers
         _save_servers(self._servers_path(), data)
 
-    def _run_local_command(self, cmd: list[str], timeout_seconds: int) -> tuple[bool, str]:
+    def _pending_server_batch(self, pending: dict[str, object] | None) -> list[ServerDraft]:
+        if not pending:
+            return []
+        raw_servers = pending.get("servers")
+        if not isinstance(raw_servers, list):
+            return []
+        servers: list[ServerDraft] = []
+        for item in raw_servers:
+            if not isinstance(item, dict):
+                continue
+            server: ServerDraft = {
+                "name": str(item.get("name", "")).strip(),
+                "country": str(item.get("country", "")).strip(),
+                "host": str(item.get("host", "")).strip(),
+                "password": str(item.get("password", "")).strip(),
+            }
+            if server["name"] and server["country"] and server["host"] and server["password"]:
+                servers.append(server)
+        return servers
+
+    def _server_batch_summary(self, servers: list[ServerDraft]) -> str:
+        if not servers:
+            return "No servers queued."
+        lines = []
+        for index, server in enumerate(servers, start=1):
+            lines.append(f"{index}. {server['name']} ({server['country']}) {server['host']} user=root")
+        return "\n".join(lines)
+
+    def _start_add_server_wizard(self, chat_id: str, servers: list[ServerDraft] | None = None) -> None:
+        self._pending[chat_id] = {"mode": "add-server-name", "servers": servers or []}
+
+    def _send_server_batch_prompt(self, token: str, chat_id: str, servers: list[ServerDraft]) -> None:
+        keyboard = [
+            [
+                {"text": "Add another", "callback_data": "add-server-more"},
+                {"text": "Start setup", "callback_data": "add-server-start"},
+            ],
+            [{"text": "Cancel", "callback_data": "add-server-cancel"}],
+        ]
+        self._send_message(
+            token,
+            chat_id,
+            f"Queued servers:\n{self._server_batch_summary(servers)}\n\nAdd another server or start setup?",
+            keyboard=keyboard,
+            cleanup=True,
+        )
+
+    def _setup_server_batch(self, token: str, chat_id: str, servers: list[ServerDraft]) -> None:
+        servers_path = self._servers_path()
+        completed = 0
+        failed = 0
+        for server in servers:
+            server_name = server["name"]
+            country = server["country"]
+            host = server["host"]
+            password = server["password"]
+            inventory_snapshot = _load_servers(servers_path)
+            try:
+                self._upsert_inventory_server(server_name, country, host, password)
+                self._send_message(token, chat_id, f"✅ Server saved: {server_name} ({country}) {host} user=root")
+                self._send_message(token, chat_id, f"Starting auto-setup for {server_name} ...")
+                safe_name = sanitize_client_name(server_name)
+                ok, setup_log = self._setup_server_now(safe_name)
+                self._append_server_setup_log(server_name, setup_log)
+                if setup_log:
+                    self._send_code_message(token, chat_id, "\n".join(setup_log))
+                if ok:
+                    completed += 1
+                    self._send_message(token, chat_id, f"✅ Setup completed: {server_name}")
+                else:
+                    failed += 1
+                    _save_servers(servers_path, inventory_snapshot)
+                    self._send_message(token, chat_id, f"❌ Setup failed: {server_name}")
+                    self._send_message(token, chat_id, "Inventory changes were rolled back for this server.")
+            except Exception as exc:  # noqa: BLE001
+                failed += 1
+                _save_servers(servers_path, inventory_snapshot)
+                self._send_message(token, chat_id, f"❌ Error on {server_name}: {exc}")
+        self._send_message(token, chat_id, f"Batch setup finished. Completed: {completed}. Failed: {failed}.")
+
+    def _run_local_command(
+        self,
+        cmd: list[str],
+        timeout_seconds: int,
+        max_output_chars: int | None = 400,
+    ) -> tuple[bool, str]:
         try:
             proc = subprocess.run(cmd, text=True, capture_output=True, timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
             return False, f"timeout after {timeout_seconds}s"
         if proc.returncode != 0:
             details = (proc.stderr or proc.stdout or f"exit code {proc.returncode}").strip()
-            if len(details) > 400:
-                details = details[:400] + "..."
+            if max_output_chars is not None and len(details) > max_output_chars:
+                details = details[:max_output_chars] + "..."
             return False, details
         out = proc.stdout.strip() or "ok"
-        if len(out) > 400:
-            out = out[:400] + "..."
+        if max_output_chars is not None and len(out) > max_output_chars:
+            out = out[:max_output_chars] + "..."
         return True, out
 
     def _cleanup_known_host_entries(self, host: str, port: int) -> tuple[bool, str]:
@@ -286,8 +373,19 @@ class TelegramBotManager:
             return True, "; ".join(messages) or "known_hosts cleaned"
         return False, "; ".join(messages) or "no matching known_hosts entries"
 
-    def _run_remote_with_hostkey_retry(self, cmd: list[str], timeout_seconds: int, host: str, port: int) -> tuple[bool, str]:
-        ok, details = self._run_local_command(cmd, timeout_seconds=timeout_seconds)
+    def _run_remote_with_hostkey_retry(
+        self,
+        cmd: list[str],
+        timeout_seconds: int,
+        host: str,
+        port: int,
+        max_output_chars: int | None = 400,
+    ) -> tuple[bool, str]:
+        ok, details = self._run_local_command(
+            cmd,
+            timeout_seconds=timeout_seconds,
+            max_output_chars=max_output_chars,
+        )
         if ok:
             return True, details
         lowered = details.lower()
@@ -301,7 +399,11 @@ class TelegramBotManager:
         cleaned, clean_details = self._cleanup_known_host_entries(host, port)
         if not cleaned:
             return False, f"{details}; known_hosts cleanup failed: {clean_details}"
-        ok2, details2 = self._run_local_command(cmd, timeout_seconds=timeout_seconds)
+        ok2, details2 = self._run_local_command(
+            cmd,
+            timeout_seconds=timeout_seconds,
+            max_output_chars=max_output_chars,
+        )
         if ok2:
             return True, f"{details2} (retried after known_hosts cleanup)"
         return False, f"{details2} (retried after known_hosts cleanup: {clean_details})"
@@ -1158,7 +1260,13 @@ class TelegramBotManager:
         if transport_error:
             return False, transport_error
         sudo_cmd = [*ssh_prefix, f"sudo -n cat {shlex.quote(config_path)}"]
-        ok, output = self._run_remote_with_hostkey_retry(sudo_cmd, timeout_seconds=120, host=host, port=port)
+        ok, output = self._run_remote_with_hostkey_retry(
+            sudo_cmd,
+            timeout_seconds=120,
+            host=host,
+            port=port,
+            max_output_chars=None,
+        )
         if ok:
             return True, output
         lowered = output.lower()
@@ -1176,6 +1284,7 @@ class TelegramBotManager:
             timeout_seconds=120,
             host=host,
             port=port,
+            max_output_chars=None,
         )
         if ok_plain:
             return True, output_plain
@@ -1296,6 +1405,7 @@ class TelegramBotManager:
                     chat_id,
                     tmp_path,
                     caption=f"client: {client_label}",
+                    strip_indent=True,
                     filename_override=f"{client_label}.{ext}",
                 )
             finally:
@@ -1566,17 +1676,26 @@ class TelegramBotManager:
             self._send_settings_menu(token, chat_id, section="users")
             return
         if pending and pending.get("mode") == "add-server-name":
+            servers = self._pending_server_batch(pending)
             try:
                 safe_name = sanitize_client_name(text)
             except Exception as exc:  # noqa: BLE001
                 self._send_message(token, chat_id, f"Invalid server name: {exc}")
                 self._send_message(token, chat_id, "Enter server name (slug):")
                 return
-            self._pending[chat_id] = {"mode": "add-server-country", "server_name": safe_name}
+            if any(server["name"].lower() == safe_name.lower() for server in servers):
+                self._send_message(token, chat_id, "This server is already queued. Enter another server name:")
+                return
+            self._pending[chat_id] = {
+                "mode": "add-server-country",
+                "server_name": safe_name,
+                "servers": servers,
+            }
             self._send_message(token, chat_id, "Enter country (for example DE/US/NL):")
             return
         if pending and pending.get("mode") == "add-server-country":
-            server_name = pending.get("server_name", "").strip()
+            server_name = str(pending.get("server_name", "")).strip()
+            servers = self._pending_server_batch(pending)
             country = text.strip()
             if not server_name:
                 self._pending.pop(chat_id, None)
@@ -1586,12 +1705,18 @@ class TelegramBotManager:
             if not country:
                 self._send_message(token, chat_id, "Country cannot be empty. Enter it again:")
                 return
-            self._pending[chat_id] = {"mode": "add-server-ip", "server_name": server_name, "country": country}
+            self._pending[chat_id] = {
+                "mode": "add-server-ip",
+                "server_name": server_name,
+                "country": country,
+                "servers": servers,
+            }
             self._send_message(token, chat_id, "Enter server IP:")
             return
         if pending and pending.get("mode") == "add-server-ip":
-            server_name = pending.get("server_name", "").strip()
-            country = pending.get("country", "").strip()
+            server_name = str(pending.get("server_name", "")).strip()
+            country = str(pending.get("country", "")).strip()
+            servers = self._pending_server_batch(pending)
             host = text.strip()
             if not server_name or not country:
                 self._pending.pop(chat_id, None)
@@ -1608,48 +1733,35 @@ class TelegramBotManager:
                 "server_name": server_name,
                 "country": country,
                 "host": host,
+                "servers": servers,
             }
             self._send_message(token, chat_id, "Enter root password:")
             return
         if pending and pending.get("mode") == "add-server-password":
-            server_name = pending.get("server_name", "").strip()
-            country = pending.get("country", "").strip()
-            host = pending.get("host", "").strip()
+            server_name = str(pending.get("server_name", "")).strip()
+            country = str(pending.get("country", "")).strip()
+            host = str(pending.get("host", "")).strip()
+            servers = self._pending_server_batch(pending)
             password = text.strip()
-            self._pending.pop(chat_id, None)
             if not server_name or not country or not host:
+                self._pending.pop(chat_id, None)
                 self._send_message(token, chat_id, "❌ Error: internal wizard state lost. Start again.")
                 self._send_settings_menu(token, chat_id, section="servers")
                 return
             if not password:
                 self._send_message(token, chat_id, "❌ Error: password is empty.")
-                self._send_settings_menu(token, chat_id, section="servers")
+                self._send_message(token, chat_id, "Enter root password:")
                 return
-            servers_path = self._servers_path()
-            inventory_snapshot = _load_servers(servers_path)
-            try:
-                self._upsert_inventory_server(server_name, country, host, password)
-                self._send_message(token, chat_id, f"✅ Server saved: {server_name} ({country}) {host} user=root")
-                self._send_message(token, chat_id, f"Starting auto-setup for {server_name} ...")
-                safe_name = sanitize_client_name(server_name)
-                ok, setup_log = self._setup_server_now(safe_name)
-                self._append_server_setup_log(server_name, setup_log)
-                if setup_log:
-                    self._send_code_message(token, chat_id, "\n".join(setup_log))
-                if ok:
-                    self._send_message(token, chat_id, f"✅ Setup completed: {server_name}")
-                else:
-                    _save_servers(servers_path, inventory_snapshot)
-                    self._send_message(token, chat_id, f"❌ Setup failed: {server_name}")
-                    self._send_message(token, chat_id, "Inventory changes were rolled back: server was not added.")
-            except Exception as exc:  # noqa: BLE001
-                _save_servers(servers_path, inventory_snapshot)
-                self._send_message(token, chat_id, f"❌ Error: {exc}")
-            self._send_settings_menu(token, chat_id, section="servers")
+            servers.append({"name": server_name, "country": country, "host": host, "password": password})
+            self._pending[chat_id] = {"mode": "add-server-choice", "servers": servers}
+            self._send_server_batch_prompt(token, chat_id, servers)
+            return
+        if pending and pending.get("mode") == "add-server-choice":
+            self._send_message(token, chat_id, "Use the buttons: Add another or Start setup.")
             return
         if pending and pending.get("mode") == "create":
-            protocol = pending["protocol"]
-            proto_choice = pending.get("proto")
+            protocol = str(pending.get("protocol", "")).strip()
+            proto_choice = str(pending.get("proto", "")).strip() or None
             if protocol == "openvpn" and proto_choice not in {"udp", "tcp"}:
                 proto_choice = self._get_openvpn_client_proto()
             try:
@@ -1677,7 +1789,7 @@ class TelegramBotManager:
             self._send_client_actions(token, chat_id, protocol)
             return
         if pending and pending.get("mode") == "delete-name":
-            protocol = pending["protocol"]
+            protocol = str(pending.get("protocol", "")).strip()
             self._pending.pop(chat_id, None)
             try:
                 manager = self._manager_from_args([protocol], require_name=False)
@@ -1728,9 +1840,44 @@ class TelegramBotManager:
             self._answer_callback(token, cb_id, "Waiting")
             return
         if data == "add-server":
-            self._pending[chat_id] = {"mode": "add-server-name"}
+            self._start_add_server_wizard(chat_id)
             self._send_message(token, chat_id, "Enter server name (slug):")
             self._answer_callback(token, cb_id, "Waiting")
+            return
+        if data == "add-server-more":
+            pending = self._pending.get(chat_id)
+            if not pending or pending.get("mode") != "add-server-choice":
+                self._answer_callback(token, cb_id, "Expired")
+                self._send_message(token, chat_id, "Server add session expired. Run Add server again.")
+                return
+            servers = self._pending_server_batch(pending)
+            self._start_add_server_wizard(chat_id, servers)
+            self._send_message(token, chat_id, "Enter server name (slug):")
+            self._answer_callback(token, cb_id, "Waiting")
+            return
+        if data == "add-server-start":
+            pending = self._pending.get(chat_id)
+            if not pending or pending.get("mode") != "add-server-choice":
+                self._answer_callback(token, cb_id, "Expired")
+                self._send_message(token, chat_id, "Server add session expired. Run Add server again.")
+                return
+            servers = self._pending_server_batch(pending)
+            self._pending.pop(chat_id, None)
+            if not servers:
+                self._send_settings_menu(token, chat_id, section="servers", notice="❌ No servers queued.")
+                self._answer_callback(token, cb_id, "Empty")
+                return
+            self._answer_callback(token, cb_id, "Started")
+            self._send_message(token, chat_id, f"Starting setup for {len(servers)} server(s) ...")
+            self._setup_server_batch(token, chat_id, servers)
+            self._send_settings_menu(token, chat_id, section="servers")
+            return
+        if data == "add-server-cancel":
+            pending = self._pending.get(chat_id)
+            if pending and str(pending.get("mode", "")).startswith("add-server"):
+                self._pending.pop(chat_id, None)
+            self._send_settings_menu(token, chat_id, section="servers", notice="Server add cancelled.")
+            self._answer_callback(token, cb_id, "Cancelled")
             return
         if data == "list-servers":
             summary = self._inventory_summary()
