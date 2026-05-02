@@ -1,0 +1,46 @@
+Main menu (ReplyKeyboardMarkup):
+- Clients
+- Protocols
+- Settings
+
+Clients -> protocol selection (inline):
+- AmneziaWG
+- OpenVPN
+- Outline
+- Xray
+- Back
+
+Clients -> protocol actions (inline):
+- Client list
+- Create:
+  - OpenVPN: select UDP/TCP first, then name
+  - After name: if enabled servers exist, select country/server (Main + remote countries)
+  - Others: request name, then country/server selection when enabled nodes exist
+- Delete (list) -> dynamic Del <name>
+- Config <name> (OpenVPN/AWG - file; Outline - copyable text; Xray - photo+link)
+- Back
+
+Protocols -> protocol selection (inline):
+- AmneziaWG
+- OpenVPN
+- Outline
+- Xray
+- Install all protocols
+- Uninstall all protocols
+- Back
+
+Protocols -> protocol actions (inline):
+- Install
+- Uninstall
+- Back
+
+Settings (inline):
+- User Settings:
+  - Add user (input prompt)
+  - Remove user (list, without deleting primary allowed_user_id)
+- Server Settings:
+  - Add server (wizard: name -> country -> ip -> root password; saves to servers.json and immediately runs auto-setup + applies bootstrap profile from main)
+  - List servers (short inventory list)
+  - Server rows with a nearby `Delete` button
+  - During auto-setup the bot sends step-by-step logs/errors and also writes to server_setup.log
+- Back
