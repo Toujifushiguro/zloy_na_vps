@@ -782,13 +782,18 @@ def orchestrate_remote(
         except Exception as exc:  # noqa: BLE001
             local_result = {"ok": False, "error_type": "local_error", "error": str(exc)}
     node_results: dict[str, dict[str, object]] = {}
+    effective_timeout_seconds = timeout_seconds
+    if action == "install":
+        effective_timeout_seconds = max(timeout_seconds, 1800)
+    elif action == "uninstall":
+        effective_timeout_seconds = max(timeout_seconds, 600)
     for node in selected_nodes:
         result = run_remote_manager(
             node=node,
             protocol=protocol,
             action=action,
             action_args=action_args,
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=effective_timeout_seconds,
         )
         if result.get("ok") is True:
             config_path = _extract_config_path(action, result.get("result"))

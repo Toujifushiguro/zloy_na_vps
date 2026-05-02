@@ -1151,9 +1151,17 @@ class TelegramBotManager:
 
         return True, logs
 
-    def _run_control_plane(self, args: list[str], timeout_seconds: int = 600) -> str:
+    def _run_control_plane(
+        self,
+        args: list[str],
+        timeout_seconds: int = 600,
+        remote_timeout_seconds: int | None = None,
+    ) -> str:
         manager_path = self.repo_root / "vpn_manager.py"
-        cmd = [sys.executable, str(manager_path), *args, "--json"]
+        cmd = [sys.executable, str(manager_path), *args]
+        if remote_timeout_seconds is not None and "--timeout" not in args:
+            cmd.extend(["--timeout", str(remote_timeout_seconds)])
+        cmd.append("--json")
         proc = subprocess.run(cmd, text=True, capture_output=True, timeout=timeout_seconds)
         stdout = proc.stdout.strip()
         stderr = proc.stderr.strip()
@@ -1166,6 +1174,8 @@ class TelegramBotManager:
             except json.JSONDecodeError:
                 payload = None
         if proc.returncode != 0:
+            if payload and isinstance(payload.get("result"), dict):
+                return self._format_remote_action_result(payload["result"])
             if payload and isinstance(payload.get("error"), str):
                 return f"❌ Error: {payload['error']}"
             details = stderr or stdout or "command failed"
@@ -1176,11 +1186,40 @@ class TelegramBotManager:
         if isinstance(result, dict):
             summary = result.get("summary")
             if isinstance(summary, dict):
-                total = summary.get("total", 0)
-                ok = summary.get("ok", 0)
-                failed = summary.get("failed", 0)
-                return f"total={total}, ok={ok}, failed={failed}"
+                return self._format_remote_action_result(result)
         return self._format_result(result)
+
+    def _format_remote_action_result(self, result: dict[str, object]) -> str:
+        lines: list[str] = []
+        local_result = result.get("local")
+        if isinstance(local_result, dict):
+            if local_result.get("ok") is True:
+                lines.append("Main: ✅ ok")
+            else:
+                lines.append(f"Main: ❌ {str(local_result.get('error') or 'local command failed')[:220]}")
+
+        nodes = result.get("nodes")
+        if isinstance(nodes, dict):
+            for node_name, node_result in nodes.items():
+                label = str(node_name).strip() or "unknown"
+                if not isinstance(node_result, dict):
+                    lines.append(f"{label}: ❌ invalid node response")
+                    continue
+                if node_result.get("ok") is True:
+                    lines.append(f"{label}: ✅ ok")
+                else:
+                    error_type = str(node_result.get("error_type") or "error").strip()
+                    error_text = str(node_result.get("error") or "remote command failed").strip()
+                    lines.append(f"{label}: ❌ {error_type}: {error_text[:220]}")
+
+        summary = result.get("summary")
+        if isinstance(summary, dict):
+            total = summary.get("total", 0)
+            ok = summary.get("ok", 0)
+            failed = summary.get("failed", 0)
+            lines.append("")
+            lines.append(f"Summary: total={total}, ok={ok}, failed={failed}")
+        return "\n".join(lines) if lines else self._format_result(result)
 
     def _run_control_plane_payload(self, args: list[str], timeout_seconds: int = 600) -> tuple[bool, dict[str, object] | None, str]:
         manager_path = self.repo_root / "vpn_manager.py"
@@ -1936,7 +1975,11 @@ class TelegramBotManager:
             action, protocol = data.split(":", 1)
             if action == "install":
                 self._send_message(token, chat_id, f"Installing {protocol} started...")
-            response = self._run_control_plane(["remote-all", protocol, action])
+            response = self._run_control_plane(
+                ["remote-all", protocol, action],
+                timeout_seconds=7200 if action == "install" else 2400,
+                remote_timeout_seconds=1800 if action == "install" else 600,
+            )
             self._send_message(token, chat_id, response)
             self._send_protocol_actions(token, chat_id, protocol)
             self._answer_callback(token, cb_id, "Done")
@@ -1960,7 +2003,11 @@ class TelegramBotManager:
             action = "install" if is_install else "uninstall"
             self._send_message(token, chat_id, f"{action_label} all protocols started...")
             for proto in ["amneziawg", "openvpn", "outline", "xray"]:
-                response = self._run_control_plane(["remote-all", proto, action])
+                response = self._run_control_plane(
+                    ["remote-all", proto, action],
+                    timeout_seconds=7200 if is_install else 2400,
+                    remote_timeout_seconds=1800 if is_install else 600,
+                )
                 self._send_message(token, chat_id, f"{proto}:\n{response}")
             self._send_protocol_choice(token, chat_id)
             self._answer_callback(token, cb_id, "Done")
@@ -2204,11 +2251,19 @@ class TelegramBotManager:
 
     def _cmd_install(self, args: list[str]) -> str:
         protocol = args[0].lower()
-        return self._run_control_plane(["remote-all", protocol, "install"])
+        return self._run_control_plane(
+            ["remote-all", protocol, "install"],
+            timeout_seconds=7200,
+            remote_timeout_seconds=1800,
+        )
 
     def _cmd_uninstall(self, args: list[str]) -> str:
         protocol = args[0].lower()
-        return self._run_control_plane(["remote-all", protocol, "uninstall"])
+        return self._run_control_plane(
+            ["remote-all", protocol, "uninstall"],
+            timeout_seconds=2400,
+            remote_timeout_seconds=600,
+        )
 
     def _cmd_clients(self, args: list[str]) -> str:
         manager = self._manager_from_args(args)

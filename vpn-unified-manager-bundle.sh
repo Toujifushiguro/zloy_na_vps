@@ -500,7 +500,7 @@ PY
   rm -f "$handoff_bootstrap_json" 2>/dev/null || true
 }
 
-cat > "$TARGET/vpn_manager.py" <<'__VPN_MGR_941af955136b113fcf8b1c6607a7051d07b0ac03eae96fba__'
+cat > "$TARGET/vpn_manager.py" <<'__VPN_MGR_ee45a19119030d92a2b49f50bb43cfbdfe2a93e57d8fb428__'
 #!/usr/bin/env python3
 """
 Unified VPN manager for multiple protocols.
@@ -1285,13 +1285,18 @@ def orchestrate_remote(
         except Exception as exc:  # noqa: BLE001
             local_result = {"ok": False, "error_type": "local_error", "error": str(exc)}
     node_results: dict[str, dict[str, object]] = {}
+    effective_timeout_seconds = timeout_seconds
+    if action == "install":
+        effective_timeout_seconds = max(timeout_seconds, 1800)
+    elif action == "uninstall":
+        effective_timeout_seconds = max(timeout_seconds, 600)
     for node in selected_nodes:
         result = run_remote_manager(
             node=node,
             protocol=protocol,
             action=action,
             action_args=action_args,
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=effective_timeout_seconds,
         )
         if result.get("ok") is True:
             config_path = _extract_config_path(action, result.get("result"))
@@ -1661,11 +1666,11 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-__VPN_MGR_941af955136b113fcf8b1c6607a7051d07b0ac03eae96fba__
-cat > "$TARGET/vpn_protocols/__init__.py" <<'__VPN_MGR_0907868a4ec078c21ef7d02f88d65ef607fbea4f8e00fbff__'
+__VPN_MGR_ee45a19119030d92a2b49f50bb43cfbdfe2a93e57d8fb428__
+cat > "$TARGET/vpn_protocols/__init__.py" <<'__VPN_MGR_87159b7904de41fea2feae3fa773837456dcbdf85adb68d4__'
 # Protocol implementations for unified VPN manager.
-__VPN_MGR_0907868a4ec078c21ef7d02f88d65ef607fbea4f8e00fbff__
-cat > "$TARGET/vpn_protocols/amneziawg.py" <<'__VPN_MGR_82fd4eb845f800e8a869a0d22dd500079a4f8c542c6b7d38__'
+__VPN_MGR_87159b7904de41fea2feae3fa773837456dcbdf85adb68d4__
+cat > "$TARGET/vpn_protocols/amneziawg.py" <<'__VPN_MGR_30498e0e49df53864559bf1002cc2efdb76dbe0ff402871d__'
 from __future__ import annotations
 
 import random
@@ -2341,8 +2346,8 @@ class AmneziaWGManager:
         if not path.exists():
             raise RuntimeError(f"Client config not found: {path}")
         return {"client": name, "path": str(path)}
-__VPN_MGR_82fd4eb845f800e8a869a0d22dd500079a4f8c542c6b7d38__
-cat > "$TARGET/vpn_protocols/openvpn.py" <<'__VPN_MGR_1a97652bd9cb5e5ffa0016e2a7c8839c06012614850b3593__'
+__VPN_MGR_30498e0e49df53864559bf1002cc2efdb76dbe0ff402871d__
+cat > "$TARGET/vpn_protocols/openvpn.py" <<'__VPN_MGR_7481afb9f2cbbde6a020233480ed6a585e33c04d4ba55611__'
 from __future__ import annotations
 
 import re
@@ -2979,8 +2984,8 @@ class OpenVPNManager:
         if not path.exists():
             path = self._build_ovpn(name)
         return {"client": name, "path": str(path)}
-__VPN_MGR_1a97652bd9cb5e5ffa0016e2a7c8839c06012614850b3593__
-cat > "$TARGET/vpn_protocols/outline.py" <<'__VPN_MGR_e7c1616c8b260311ac4f8f8f0c37ee86948356045de07900__'
+__VPN_MGR_7481afb9f2cbbde6a020233480ed6a585e33c04d4ba55611__
+cat > "$TARGET/vpn_protocols/outline.py" <<'__VPN_MGR_2d4d3c6bbd15627bcf10e849666800a5d76f8aaf1abf817a__'
 from __future__ import annotations
 
 import base64
@@ -3269,8 +3274,8 @@ class OutlineManager:
             self.clients_dir.mkdir(parents=True, exist_ok=True)
             write_text(path, uri + "\n", mode=0o600)
         return {"client": safe, "path": str(path)}
-__VPN_MGR_e7c1616c8b260311ac4f8f8f0c37ee86948356045de07900__
-cat > "$TARGET/vpn_protocols/xray_reality.py" <<'__VPN_MGR_d90007d44082f0863ea0748140b378b42a3f55d1530dd26b__'
+__VPN_MGR_2d4d3c6bbd15627bcf10e849666800a5d76f8aaf1abf817a__
+cat > "$TARGET/vpn_protocols/xray_reality.py" <<'__VPN_MGR_3461223e8045fd5c25318376025446f2b2c8fe26bd182f5b__'
 from __future__ import annotations
 
 import json
@@ -3657,8 +3662,8 @@ class XrayRealityManager:
         uri = self._build_uri(safe, client_id, inbound)
         out = self._write_client_uri(safe, uri)
         return {"client": safe, "path": str(out)}
-__VPN_MGR_d90007d44082f0863ea0748140b378b42a3f55d1530dd26b__
-cat > "$TARGET/vpn_protocols/shared.py" <<'__VPN_MGR_b9f7404d9c56da7506d0f15b983f1ffd94c0e6dd026605dd__'
+__VPN_MGR_3461223e8045fd5c25318376025446f2b2c8fe26bd182f5b__
+cat > "$TARGET/vpn_protocols/shared.py" <<'__VPN_MGR_06f27feed198ae876984d632f48e5bdde59a279e29cf19f7__'
 from __future__ import annotations
 
 import os
@@ -3706,8 +3711,8 @@ def replace_or_append_line(content: str, key: str, value: str) -> str:
         return re.sub(pattern, replacement, content, flags=re.MULTILINE)
     base = content.rstrip()
     return f"{base}\n{replacement}\n" if base else f"{replacement}\n"
-__VPN_MGR_b9f7404d9c56da7506d0f15b983f1ffd94c0e6dd026605dd__
-cat > "$TARGET/vpn_protocols/telegram_bot.py" <<'__VPN_MGR_6bac71420a77532e71fe3f13b322546d8d081219af5b4d3c__'
+__VPN_MGR_06f27feed198ae876984d632f48e5bdde59a279e29cf19f7__
+cat > "$TARGET/vpn_protocols/telegram_bot.py" <<'__VPN_MGR_4153d240d29777c299680aaa489d8edcbdfed01c03d4f4b5__'
 from __future__ import annotations
 
 import json
@@ -4861,9 +4866,17 @@ class TelegramBotManager:
 
         return True, logs
 
-    def _run_control_plane(self, args: list[str], timeout_seconds: int = 600) -> str:
+    def _run_control_plane(
+        self,
+        args: list[str],
+        timeout_seconds: int = 600,
+        remote_timeout_seconds: int | None = None,
+    ) -> str:
         manager_path = self.repo_root / "vpn_manager.py"
-        cmd = [sys.executable, str(manager_path), *args, "--json"]
+        cmd = [sys.executable, str(manager_path), *args]
+        if remote_timeout_seconds is not None and "--timeout" not in args:
+            cmd.extend(["--timeout", str(remote_timeout_seconds)])
+        cmd.append("--json")
         proc = subprocess.run(cmd, text=True, capture_output=True, timeout=timeout_seconds)
         stdout = proc.stdout.strip()
         stderr = proc.stderr.strip()
@@ -4876,6 +4889,8 @@ class TelegramBotManager:
             except json.JSONDecodeError:
                 payload = None
         if proc.returncode != 0:
+            if payload and isinstance(payload.get("result"), dict):
+                return self._format_remote_action_result(payload["result"])
             if payload and isinstance(payload.get("error"), str):
                 return f"❌ Error: {payload['error']}"
             details = stderr or stdout or "command failed"
@@ -4886,11 +4901,40 @@ class TelegramBotManager:
         if isinstance(result, dict):
             summary = result.get("summary")
             if isinstance(summary, dict):
-                total = summary.get("total", 0)
-                ok = summary.get("ok", 0)
-                failed = summary.get("failed", 0)
-                return f"total={total}, ok={ok}, failed={failed}"
+                return self._format_remote_action_result(result)
         return self._format_result(result)
+
+    def _format_remote_action_result(self, result: dict[str, object]) -> str:
+        lines: list[str] = []
+        local_result = result.get("local")
+        if isinstance(local_result, dict):
+            if local_result.get("ok") is True:
+                lines.append("Main: ✅ ok")
+            else:
+                lines.append(f"Main: ❌ {str(local_result.get('error') or 'local command failed')[:220]}")
+
+        nodes = result.get("nodes")
+        if isinstance(nodes, dict):
+            for node_name, node_result in nodes.items():
+                label = str(node_name).strip() or "unknown"
+                if not isinstance(node_result, dict):
+                    lines.append(f"{label}: ❌ invalid node response")
+                    continue
+                if node_result.get("ok") is True:
+                    lines.append(f"{label}: ✅ ok")
+                else:
+                    error_type = str(node_result.get("error_type") or "error").strip()
+                    error_text = str(node_result.get("error") or "remote command failed").strip()
+                    lines.append(f"{label}: ❌ {error_type}: {error_text[:220]}")
+
+        summary = result.get("summary")
+        if isinstance(summary, dict):
+            total = summary.get("total", 0)
+            ok = summary.get("ok", 0)
+            failed = summary.get("failed", 0)
+            lines.append("")
+            lines.append(f"Summary: total={total}, ok={ok}, failed={failed}")
+        return "\n".join(lines) if lines else self._format_result(result)
 
     def _run_control_plane_payload(self, args: list[str], timeout_seconds: int = 600) -> tuple[bool, dict[str, object] | None, str]:
         manager_path = self.repo_root / "vpn_manager.py"
@@ -5646,7 +5690,11 @@ class TelegramBotManager:
             action, protocol = data.split(":", 1)
             if action == "install":
                 self._send_message(token, chat_id, f"Installing {protocol} started...")
-            response = self._run_control_plane(["remote-all", protocol, action])
+            response = self._run_control_plane(
+                ["remote-all", protocol, action],
+                timeout_seconds=7200 if action == "install" else 2400,
+                remote_timeout_seconds=1800 if action == "install" else 600,
+            )
             self._send_message(token, chat_id, response)
             self._send_protocol_actions(token, chat_id, protocol)
             self._answer_callback(token, cb_id, "Done")
@@ -5670,7 +5718,11 @@ class TelegramBotManager:
             action = "install" if is_install else "uninstall"
             self._send_message(token, chat_id, f"{action_label} all protocols started...")
             for proto in ["amneziawg", "openvpn", "outline", "xray"]:
-                response = self._run_control_plane(["remote-all", proto, action])
+                response = self._run_control_plane(
+                    ["remote-all", proto, action],
+                    timeout_seconds=7200 if is_install else 2400,
+                    remote_timeout_seconds=1800 if is_install else 600,
+                )
                 self._send_message(token, chat_id, f"{proto}:\n{response}")
             self._send_protocol_choice(token, chat_id)
             self._answer_callback(token, cb_id, "Done")
@@ -5914,11 +5966,19 @@ class TelegramBotManager:
 
     def _cmd_install(self, args: list[str]) -> str:
         protocol = args[0].lower()
-        return self._run_control_plane(["remote-all", protocol, "install"])
+        return self._run_control_plane(
+            ["remote-all", protocol, "install"],
+            timeout_seconds=7200,
+            remote_timeout_seconds=1800,
+        )
 
     def _cmd_uninstall(self, args: list[str]) -> str:
         protocol = args[0].lower()
-        return self._run_control_plane(["remote-all", protocol, "uninstall"])
+        return self._run_control_plane(
+            ["remote-all", protocol, "uninstall"],
+            timeout_seconds=2400,
+            remote_timeout_seconds=600,
+        )
 
     def _cmd_clients(self, args: list[str]) -> str:
         manager = self._manager_from_args(args)
@@ -6500,7 +6560,7 @@ class TelegramBotManager:
             keyboard=keyboard,
             cleanup=True,
         )
-__VPN_MGR_6bac71420a77532e71fe3f13b322546d8d081219af5b4d3c__
+__VPN_MGR_4153d240d29777c299680aaa489d8edcbdfed01c03d4f4b5__
 install_bundle_copy() {
   script_path="$0"
   case "$script_path" in
